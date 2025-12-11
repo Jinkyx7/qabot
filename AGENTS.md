@@ -16,7 +16,7 @@
 - Add docstrings for public-facing functions and short inline comments only where behavior is non-obvious (e.g., parameter choices for watsonx).
 
 ## Testing Guidelines
-- No automated tests exist yet; add `pytest` when extending logic (e.g., chunking behavior, retriever wiring). Example: `pip install pytest` then `pytest`.
+- Smoke tests live in `tests/` and can be run with `pytest`; they validate PDF loading and text splitting using generated sample PDFs.
 - For UI changes, run `python qabot.py` and manually verify upload, query, and response paths; test with small and large PDFs to validate chunking/latency.
 
 ## Commit & Pull Request Guidelines
