@@ -1,0 +1,30 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Environment and credentials
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Test & tooling artifacts
+.pytest_cache/
+.mypy_cache/
+
+# Data / local runs
+*.sqlite
+*.db
+chroma/
+
+# Logs
+*.log

@@ -1,0 +1,8 @@
+ibm-watsonx-ai
+langchain
+langchain-ibm
+langchain-community
+chromadb
+gradio
+pypdf
+huggingface-hub
