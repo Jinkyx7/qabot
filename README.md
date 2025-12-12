@@ -31,7 +31,7 @@ Vector store: Chroma (from_documents → as_retriever)
    ↓
 LLM: local transformers pipeline (HF_MODEL_ID, default Qwen/Qwen2.5-1.5B-Instruct)
    ↓
-RetrievalQA chain (stuff) returns answer
+RetrievalQA: returns answer
 ```
 
 ## Setup
