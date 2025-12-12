@@ -1,19 +1,19 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `qabot.py`: Single entrypoint running a Gradio UI that wires together document loading (PDF), chunking, Watsonx embeddings/LLM, Chroma vector store, and a RetrievalQA chain. No other source or asset directories are present; uploaded PDFs are handled in-memory at runtime.
+- `qabot.py`: Single entrypoint running a Gradio UI that wires together document loading (PDF), chunking, Hugging Face Hub LLM, sentence-transformer embeddings, Chroma vector store, and a RetrievalQA chain. No other source or asset directories are present; uploaded PDFs are handled in-memory at runtime.
 - Runtime artifacts (Chroma index) are created in-process and not persisted; no cache or storage directories are expected in the repo.
 
 ## Setup, Build, and Local Run
 - Use Python 3.10+ and a virtual environment: `python -m venv .venv && source .venv/bin/activate`.
-- Install runtime deps matching the imports: `pip install -U ibm-watsonx-ai langchain_ibm langchain-community gradio chromadb pypdf huggingface_hub`.
+- Install runtime deps: `pip install -r requirements.txt` (LangChain, Gradio, Chroma, Hugging Face Hub, sentence-transformers, dotenv).
 - Launch the app locally with `python qabot.py`; the interface serves at `http://0.0.0.0:7860/`.
-- Provide IBM watsonx.ai credentials via environment variables or your local IBM Cloud config; set a Hugging Face token via `huggingface-cli login` if models require it.
+- Provide a Hugging Face token via `.env` (auto-loaded) or `huggingface-cli login` for hub-hosted LLMs and embeddings.
 
 ## Coding Style & Naming Conventions
-- Follow PEP 8 with 4-space indents and snake_case for functions/variables; keep functions small and composable (e.g., loader, splitter, embedder, retriever).
-- Prefer explicit configuration at the top of the file (model IDs, project IDs, chunk sizes) and pass dependencies through functions rather than using globals.
-- Add docstrings for public-facing functions and short inline comments only where behavior is non-obvious (e.g., parameter choices for watsonx).
+- Follow PEP 8 with 4-space indents and snake_case for functions/variables; keep functions small and composable (loader, splitter, embedder, retriever).
+- Keep configuration constants near the top (model IDs, chunk sizes, generation params) and pass dependencies through functions rather than using globals.
+- Add docstrings for public-facing functions and short inline comments only where behavior is non-obvious (e.g., why a specific model or parameter is chosen).
 
 ## Testing Guidelines
 - Smoke tests live in `tests/` and can be run with `pytest`; they validate PDF loading and text splitting using generated sample PDFs.

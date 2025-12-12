@@ -1,12 +1,11 @@
 # RAG PDF QA Bot
 
-This project serves a simple retrieval-augmented generation (RAG) chatbot that answers questions about an uploaded PDF using IBM watsonx.ai models, LangChain, and a Gradio UI.
+This project serves a simple retrieval-augmented generation (RAG) chatbot that answers questions about an uploaded PDF using open-source Hugging Face models, LangChain, and a Gradio UI.
 
 ## Prerequisites
 
 - Python 3.10+
-- IBM watsonx.ai credentials with access to the configured model and project.
-- Optional: Hugging Face token if required by downstream models (`huggingface-cli login`).
+- Hugging Face token with access to the configured models (`huggingface-cli login` or set `HF_TOKEN`).
 
 ## Setup
 
@@ -15,6 +14,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+- Dependencies are pinned (e.g., `langchain==0.3.0`, `langchain-huggingface==0.1.0`, `gradio==3.50.2`) to match the current code paths and avoid recent breaking API changes.
 
 ## Running Locally
 
@@ -37,13 +38,17 @@ pytest
 
 ## Configuration
 
-- Edit model IDs, project ID, and generation parameters in `qabot.py` (e.g., `model_id`, `project_id`, chunk sizes, embedding truncate length).
-- Provide credentials via environment variables or your IBM Cloud config; avoid hard-coding secrets (example: `export WATSONX_APIKEY=...` and `export WATSONX_URL=...` if your setup requires them).
+- Edit model IDs and generation parameters in `qabot.py` (e.g., `model_id` for the LLM, `chunk_size`/`chunk_overlap` for the splitter).
+- Provide credentials via environment variables; avoid hard-coding secrets. The app auto-loads `.env` (see below) so `HF_TOKEN` can be stored there.
 - To adjust chunking, tweak `chunk_size`/`chunk_overlap`; larger chunks improve context but increase token usage.
+
+### Using a .env file
+- Create `.env` (already gitignored) with your token: `HF_TOKEN=your_token_here` (or `HUGGINGFACEHUB_API_TOKEN=...`).
+- The app runs `python-dotenv` on startup, so no manual `export` is needed.
 
 ## Project Structure
 
-- `qabot.py`: Gradio app wiring PDF loading, text splitting, Watsonx embeddings/LLM, Chroma vector store, and a RetrievalQA chain.
+- `qabot.py`: Gradio app wiring PDF loading, text splitting, open-source embeddings/LLM (Hugging Face Hub), Chroma vector store, and a RetrievalQA chain.
 - `AGENTS.md`: Repository guidelines for contributors.
 
 ## Development Notes

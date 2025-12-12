@@ -1,14 +1,20 @@
+"""
+Simple RAG chatbot over PDFs using open-source embeddings and a Hugging Face Hub LLM.
+"""
+
 from pathlib import Path
 import logging
+import os
+import json
+from typing import Iterable, List
 
-from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
-from ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames
-from langchain_ibm import WatsonxLLM, WatsonxEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_community.document_loaders import PyPDFLoader
 from langchain.chains import RetrievalQA
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
 
+from dotenv import load_dotenv
 import gradio as gr
 
 logging.basicConfig(
@@ -17,26 +23,61 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-## LLM
-def get_llm():
-    model_id = 'ibm/granite-3-2-8b-instruct'
-    parameters = {
-        GenParams.MAX_NEW_TOKENS: 256,  # Specify the max tokens you want to generate
-        GenParams.TEMPERATURE: 0.5,
-    }
-    project_id = "skills-network"
-    watsonx_llm = WatsonxLLM(
-        model_id=model_id,
-        url="https://us-south.ml.cloud.ibm.com",
-        project_id=project_id,
-        params=parameters,
-    )
-    return watsonx_llm
+load_dotenv()  # auto-load .env for HF_TOKEN
 
-## Document loader
-def document_loader(file):
+
+def _patch_hf_inference_client_post():
+    """Add a .post method to InferenceClient classes if missing (hf-hub >=0.36)."""
+    from huggingface_hub import AsyncInferenceClient, InferenceClient  # type: ignore
+
+    if not hasattr(InferenceClient, "post"):
+        def _post(self, *, json=None, stream=False, task=None):
+            inputs = (json or {}).get("inputs")
+            params = (json or {}).get("parameters") or {}
+            if stream:
+                # LangChain's HF endpoint wrapper doesn't stream via .post
+                raise NotImplementedError("Streaming via .post is not supported.")
+            output = self.text_generation(inputs, **params)
+            return json.dumps([{"generated_text": output}]).encode()
+
+        InferenceClient.post = _post  # type: ignore[attr-defined]
+
+    if not hasattr(AsyncInferenceClient, "post"):
+        async def _apost(self, *, json=None, stream=False, task=None):
+            inputs = (json or {}).get("inputs")
+            params = (json or {}).get("parameters") or {}
+            if stream:
+                raise NotImplementedError("Streaming via .post is not supported.")
+            output = await self.text_generation(inputs, **params)
+            return json.dumps([{"generated_text": output}]).encode()
+
+        AsyncInferenceClient.post = _apost  # type: ignore[attr-defined]
+
+
+def get_llm():
+    """Create an LLM client backed by Hugging Face Inference Endpoints/Hub."""
+    _patch_hf_inference_client_post()
+    model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "Missing Hugging Face token. Set HF_TOKEN or HUGGINGFACEHUB_API_TOKEN in .env"
+        )
+    return HuggingFaceEndpoint(
+        repo_id=model_id,
+        huggingfacehub_api_token=token,
+        temperature=0.2,
+        max_new_tokens=256,
+    )
+
+
+def document_loader(file) -> List:
     """Load PDF pages into LangChain Documents."""
-    path = Path(file.name if hasattr(file, "name") else file)
+    # Preserve full paths for pathlib.Path inputs; fall back to file-like .name
+    if isinstance(file, (str, Path)):
+        path = Path(file)
+    else:
+        path = Path(getattr(file, "name"))
     try:
         loader = PyPDFLoader(str(path))
         loaded_document = loader.load()
@@ -45,8 +86,8 @@ def document_loader(file):
         logger.exception("Failed to load PDF: %s", path)
         raise RuntimeError(f"Unable to load PDF: {path}") from exc
 
-## Text splitter
-def text_splitter(data):
+
+def text_splitter(data: Iterable) -> List:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
@@ -55,32 +96,23 @@ def text_splitter(data):
     chunks = splitter.split_documents(data)
     return chunks
 
-## Embedding model
-def watsonx_embedding():
-    embed_params = {
-        EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: 512,  # retain context for retrieval
-        EmbedTextParamsMetaNames.RETURN_OPTIONS: {"input_text": True},
-    }
-    
-    watsonx_embedding = WatsonxEmbeddings(
-        model_id="ibm/slate-125m-english-rtrvr-v2",
-        url="https://us-south.ml.cloud.ibm.com",
-        project_id="skills-network",
-        params=embed_params,
-    )
-    return watsonx_embedding
 
-## Vector db
+def embedding_model():
+    """Use a compact sentence-transformer for embeddings."""
+    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    return HuggingFaceEmbeddings(model_name=model_name)
+
+
 def vector_database(chunks):
-    embedding_model = watsonx_embedding()
+    embedder = embedding_model()
     try:
-        vectordb = Chroma.from_documents(chunks, embedding_model)
+        vectordb = Chroma.from_documents(chunks, embedder)
         return vectordb
     except Exception as exc:  # pragma: no cover - logged and re-raised
         logger.exception("Failed to build vector store")
         raise RuntimeError("Unable to build vector store") from exc
 
-## Retriever
+
 def retriever(file):
     splits = document_loader(file)
     chunks = text_splitter(splits)
@@ -88,33 +120,50 @@ def retriever(file):
     retriever = vectordb.as_retriever()
     return retriever
 
-## QA Chain
+
 def retriever_qa(file, query):
     llm = get_llm()
     retriever_obj = retriever(file)
-    qa = RetrievalQA.from_chain_type(llm=llm, 
-                                    chain_type="stuff", 
-                                    retriever=retriever_obj, 
-                                    return_source_documents=True)
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever_obj,
+        return_source_documents=True,
+    )
     try:
         response = qa.invoke({"query": query})
-        return response['result']
+        return response["result"]
     except Exception as exc:  # pragma: no cover - logged and handled
         logger.exception("QA chain failed")
         return "An error occurred while generating the answer. Please retry."
 
-# Create Gradio interface
-rag_application = gr.Interface(
-    fn=retriever_qa,
-    allow_flagging="never",
-    inputs=[
-        gr.File(label="Upload PDF File", file_count="single", file_types=['.pdf'], type="file"),  # Accept file object to expose .name
-        gr.Textbox(label="Input Query", lines=2, placeholder="Type your question here...")
-    ],
-    outputs=gr.Textbox(label="Answer"),
-    title="RAG Chatbot with IBM watsonx.ai",
-    description="Upload a PDF document and ask any question. The chatbot will try to answer using the provided document."
-)
 
-# Launch the app
-rag_application.launch(server_name="0.0.0.0", server_port=7860)
+def build_interface():
+    """Construct the Gradio interface."""
+    return gr.Interface(
+        fn=retriever_qa,
+        inputs=[
+            gr.File(
+                label="Upload PDF File",
+                file_count="single",
+                file_types=[".pdf"],
+                type="file",
+            ),
+            gr.Textbox(
+                label="Input Query", lines=2, placeholder="Type your question here..."
+            ),
+        ],
+        outputs=gr.Textbox(label="Answer"),
+        title="RAG Chatbot (Open Source Models)",
+        description="Upload a PDF and ask questions. The chatbot answers using retrieved chunks from the document.",
+        analytics_enabled=False,
+    )
+
+
+if __name__ == "__main__":
+    rag_application = build_interface()
+    rag_application.launch(
+        server_name="127.0.0.1",
+        server_port=7860,
+        share=False,
+    )
