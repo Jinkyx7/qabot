@@ -6,13 +6,15 @@ from pathlib import Path
 import logging
 import os
 import json
+import socket
 from typing import Iterable, List
 
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 from dotenv import load_dotenv
 import gradio as gr
@@ -55,19 +57,31 @@ def _patch_hf_inference_client_post():
 
 
 def get_llm():
-    """Create an LLM client backed by Hugging Face Inference Endpoints/Hub."""
-    _patch_hf_inference_client_post()
-    model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "Missing Hugging Face token. Set HF_TOKEN or HUGGINGFACEHUB_API_TOKEN in .env"
-        )
-    return HuggingFaceEndpoint(
-        repo_id=model_id,
-        huggingfacehub_api_token=token,
-        temperature=0.2,
-        max_new_tokens=256,
+    """Create a local transformers LLM pipeline (no remote inference)."""
+    model_id = os.getenv("HF_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct")
+    max_new_tokens = int(os.getenv("HF_MAX_NEW_TOKENS", "256"))
+    temperature = float(os.getenv("HF_TEMPERATURE", "0.2"))
+    device_map = os.getenv("HF_DEVICE_MAP", "auto")
+    torch_dtype = os.getenv("HF_TORCH_DTYPE", "auto")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        device_map=device_map,
+        torch_dtype=torch_dtype,
+        trust_remote_code=True,
+    )
+    text_gen = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+    )
+    return HuggingFacePipeline(
+        pipeline=text_gen,
+        model_kwargs={
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+        },
     )
 
 
@@ -99,7 +113,7 @@ def text_splitter(data: Iterable) -> List:
 
 def embedding_model():
     """Use a compact sentence-transformer for embeddings."""
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    model_name = "sentence-transformers/all-mpnet-base-v2"
     return HuggingFaceEmbeddings(model_name=model_name)
 
 
@@ -162,8 +176,23 @@ def build_interface():
 
 if __name__ == "__main__":
     rag_application = build_interface()
+    env_port = os.getenv("GRADIO_SERVER_PORT")
+    if env_port:
+        port = int(env_port)
+    else:
+        # Prefer 7860; if unavailable, grab an ephemeral free port.
+        preferred_port = 7860
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("127.0.0.1", preferred_port))
+                port = preferred_port
+        except OSError:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("127.0.0.1", 0))
+                port = sock.getsockname()[1]
+
     rag_application.launch(
         server_name="127.0.0.1",
-        server_port=7860,
+        server_port=port,
         share=False,
     )
