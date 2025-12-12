@@ -11,6 +11,7 @@ venv/
 # Environment and credentials
 .env
 .env.*
+AGENTS.md
 
 # OS / editor
 .DS_Store

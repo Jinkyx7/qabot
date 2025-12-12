@@ -58,7 +58,7 @@ def _patch_hf_inference_client_post():
 
 def get_llm():
     """Create a local transformers LLM pipeline (no remote inference)."""
-    model_id = os.getenv("HF_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct")
+    model_id = os.getenv("HF_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
     max_new_tokens = int(os.getenv("HF_MAX_NEW_TOKENS", "256"))
     temperature = float(os.getenv("HF_TEMPERATURE", "0.2"))
     device_map = os.getenv("HF_DEVICE_MAP", "auto")
@@ -81,6 +81,7 @@ def get_llm():
         model_kwargs={
             "max_new_tokens": max_new_tokens,
             "temperature": temperature,
+            "return_full_text": False,
         },
     )
 
@@ -146,7 +147,16 @@ def retriever_qa(file, query):
     )
     try:
         response = qa.invoke({"query": query})
-        return response["result"]
+        full_answer = response["result"]
+        # Trim common prompt preamble if the model echoes it back.
+        if "Helpful Answer:" in full_answer:
+            trimmed = full_answer.split("Helpful Answer:", 1)[1].strip()
+        else:
+            trimmed = full_answer.strip()
+        logger.info("----- Model output start -----")
+        logger.info("Full LLM response: %s", full_answer)
+        logger.info("----- Model output end -----")
+        return trimmed
     except Exception as exc:  # pragma: no cover - logged and handled
         logger.exception("QA chain failed")
         return "An error occurred while generating the answer. Please retry."
