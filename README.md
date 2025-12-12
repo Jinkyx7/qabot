@@ -28,6 +28,7 @@ pip install -r requirements.txt
 ## Running Locally
 
 ```bash
+cp .env.example .env  # create and fill in env vars, then:
 python qabot.py
 ```
 
@@ -58,16 +59,43 @@ pytest
   - For smaller/faster downloads, set `HF_MODEL_ID` to a lighter instruct model (e.g., `Qwen/Qwen2.5-1.5B-Instruct` or `microsoft/Phi-3-mini-4k-instruct`).
 
 ### Using a .env file
-- Create `.env` (already gitignored) with your token: `HF_TOKEN=your_token_here` (or `HUGGINGFACEHUB_API_TOKEN=...`).
+
+- Create `.env` (already gitignored) with your token and model settings. Example:
+  ```
+  HF_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
+  HF_MAX_NEW_TOKENS=256
+  HF_TEMPERATURE=0.2
+  HF_DEVICE_MAP=auto
+  HF_TORCH_DTYPE=auto
+  HF_TOKEN=your_token_here  # optional if model is ungated
+  ```
 - The app runs `python-dotenv` on startup, so no manual `export` is needed.
 
 ## Project Structure
 
 - `qabot.py`: Gradio app wiring PDF loading, text splitting (chunk size 1000 / overlap 200), open-source embeddings/LLM (local transformers), Chroma vector store, and a RetrievalQA chain. All runtime artifacts stay in memory and are not persisted.
-- `AGENTS.md`: Repository guidelines for contributors.
+
+## Pipeline Flow
+
+```
+PDF upload
+   ↓
+Gradio UI (file + query input)
+   ↓
+LangChain PyPDFLoader (document_loader)
+   ↓
+RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
+   ↓
+Embeddings: sentence-transformers/all-mpnet-base-v2 (HuggingFaceEmbeddings)
+   ↓
+Vector store: Chroma (from_documents → as_retriever)
+   ↓
+LLM: local transformers pipeline (HF_MODEL_ID, default Qwen/Qwen2.5-1.5B-Instruct)
+   ↓
+RetrievalQA chain (stuff) returns answer
+```
 
 ## Development Notes
 
 - Functions are structured to keep the pipeline modular (loader → splitter → embedder → vector store → retriever → QA chain).
 - Add tests with `pytest` as logic grows (e.g., chunking behavior, retriever wiring). Run with `pytest` after installing dev deps.
-- See `AGENTS.md` for coding style, commit practices, and security tips.
