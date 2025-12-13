@@ -1,6 +1,6 @@
 # RAG PDF QA Bot
 
-This project serves a simple retrieval-augmented generation (RAG) chatbot that answers questions about an uploaded PDF using open-source Hugging Face models, LangChain, and a Gradio UI. The LLM now runs locally via `transformers` with a default Qwen 7B Instruct model (configurable), and embeddings use `sentence-transformers/all-mpnet-base-v2`.
+This project serves a simple retrieval-augmented generation (RAG) chatbot that answers questions about an uploaded PDF using open-source Hugging Face models, LangChain, and a Gradio UI. The LLM now runs locally via `transformers` with a default Qwen 1.5B Instruct model (configurable), and embeddings use `sentence-transformers/all-mpnet-base-v2`.
 
 ## Demo
 
@@ -12,7 +12,7 @@ Demo video:
 
 - Python 3.10+
 - Hugging Face token (set `HF_TOKEN` or login) if the configured model requires gated access; models are downloaded locally.
-- Sufficient local resources for the chosen `HF_MODEL_ID` (defaults to `Qwen/Qwen2.5-7B-Instruct`; adjust if hardware-constrained).
+- Sufficient local resources for the chosen `HF_MODEL_ID` (defaults to `Qwen/Qwen2.5-1.5B-Instruct`; adjust if hardware-constrained).
 
 ## Pipeline Flow
 
@@ -82,7 +82,7 @@ pytest
 - Provide credentials via environment variables; avoid hard-coding secrets. The app auto-loads `.env` (see below) so `HF_TOKEN` can be stored there.
 - To adjust chunking, tweak `chunk_size`/`chunk_overlap`; larger chunks improve context but increase token usage.
 - Configure the local LLM via environment variables:
-  - `HF_MODEL_ID` (default `Qwen/Qwen2.5-7B-Instruct`)
+  - `HF_MODEL_ID` (default `Qwen/Qwen2.5-1.5B-Instruct`)
   - `HF_MAX_NEW_TOKENS` (default `256`)
   - `HF_TEMPERATURE` (default `0.2`)
   - `HF_DEVICE_MAP` (default `auto`)
